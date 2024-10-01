@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = [
+    "chess_rot_engine",
+    "chess_rot_ui"
+]
