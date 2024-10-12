@@ -27,7 +27,7 @@ impl BitBoard {
         return self.value & mask == 0;
     }
 
-    pub fn is_occupied(&self, position: u8) -> bool {
+    pub fn is_bit_set(&self, position: u8) -> bool {
         return !self.is_empty(position);
     }
 

@@ -4,7 +4,7 @@ use crate::bitboard::BitBoard;
 use crate::chess::Color;
 
 #[repr(u64)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub enum Piece {
     King = 0,
     Queen = 1,
@@ -145,4 +145,11 @@ impl TryFrom<usize> for Piece {
             x => panic!("trying to get piece type for invalid usize value {}", x),
         }
     }
+}
+
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+pub struct ColoredPiece {
+    pub color: Color,
+    pub piece: Piece,
 }

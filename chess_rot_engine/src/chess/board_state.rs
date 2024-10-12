@@ -34,7 +34,7 @@ impl Error for FenFormatError {
 }
 
 impl BoardState {
-    pub fn new() -> BoardState {
+    pub fn default() -> BoardState {
         return BoardState {
             pieces_for_color: [Piece::default_bitboard_for_color(Color::White), Piece::default_bitboard_for_color(Color::Black)],
             pieces: [
@@ -102,12 +102,12 @@ impl BoardState {
         });
     }
 
-    pub fn piece_at(&self, position: u8) -> Option<(Piece, Color)> {
-        return if self.pieces_for_color[Color::White.index()].is_occupied(position) {
-            self.find_piece_at_position_for_color(Color::White, position)
+    pub fn get_piece_at(&self, sqr: u8) -> Option<(Piece, Color)> {
+        return if self.pieces_for_color[Color::White.index()].is_bit_set(sqr) {
+            self.find_piece_at_square_for_color(Color::White, sqr)
                 .map(|p| (p, Color::White))
-        } else if self.pieces_for_color[Color::Black.index()].is_occupied(position) {
-            self.find_piece_at_position_for_color(Color::Black, position)
+        } else if self.pieces_for_color[Color::Black.index()].is_bit_set(sqr) {
+            self.find_piece_at_square_for_color(Color::Black, sqr)
                 .map(|p| (p, Color::Black))
         } else {
             None
@@ -115,30 +115,44 @@ impl BoardState {
     }
 
     pub fn make_move(&self, m: Move) -> BoardState {
-        return BoardState::new();
+
+
+
+
+        return BoardState::default();
     }
 
-    pub fn remove_piece(&mut self, position: u8) {
-        let removed = self.piece_at(position);
-
+    pub fn remove_piece(&mut self, sqr: u8) {
+        let removed = self.get_piece_at(sqr);
         if (removed.is_some()) {
             let p = removed.unwrap();
             let bb = self.pieces[p.1.index()][p.0.index()];
-            let new_bb = bb.remove_bit(position);
+            let new_bb = bb.remove_bit(sqr);
             self.pieces[p.1.index()][p.0.index()] = new_bb;
         }
     }
 
 
-    fn find_piece_at_position_for_color(&self, color: Color, position: u8) -> Option<Piece> {
+    fn find_piece_at_square_for_color(&self, color: Color, sqr: u8) -> Option<Piece> {
         let pieces = self.pieces[color.index()];
         for i in 0..6 {
-            if pieces[i].is_occupied(position) {
+            if pieces[i].is_bit_set(sqr) {
                 return Piece::try_from(i).ok();
             }
         }
         return None;
     }
+
+    fn find_piece_bb_at_sqr_for_color(&self, color: Color, sqr: u8) -> Option<BitBoard> {
+        let pieces = self.pieces[color.index()];
+        for i in 0..6 {
+            if pieces[i].is_bit_set(sqr) {
+                return Some(pieces[i]);
+            }
+        }
+        return None;
+    }
+
 
     pub fn validate_fen(fen: String) -> Option<String> {
         let split: Vec<String> = fen.split(" ").map(|s| s.to_string()).collect();
@@ -199,7 +213,7 @@ impl BoardState {
             let mut empty_count = 0;
             for file in (0..8).rev() {
                 let position = (BitBoard::END_BIT - (rank * 8) - file) as u8;
-                match self.piece_at(position) {
+                match self.get_piece_at(position) {
                     None => {
                         empty_count = empty_count + 1;
                     }
