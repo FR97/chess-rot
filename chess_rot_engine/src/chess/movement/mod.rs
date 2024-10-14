@@ -1,4 +1,4 @@
-pub(crate) mod chess_move;
-pub(crate) mod move_provider;
-pub(crate) mod move_type;
-mod direction;
+pub mod chess_move;
+pub mod move_provider;
+pub mod move_type;
+pub mod direction;
