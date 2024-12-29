@@ -1,6 +1,6 @@
 use std::fmt;
 
-use std::ops::{BitAnd, BitOr, Mul};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Mul, Not, Shl, Shr};
 use once_cell::sync::Lazy;
 
 
@@ -19,7 +19,6 @@ const BIT_POSITION_LOOKUP: [usize; 64] = [
 
 const MSB: Lazy<[usize; 256]> = Lazy::new(calculate_msb_values);
 
-pub static SINGLE_BIT_BB: Lazy<[BitBoard; 64]> = Lazy::new(create_single_bit_bitboards);
 
 
 #[derive(PartialEq, Eq, Copy, Clone)]
@@ -31,6 +30,8 @@ impl BitBoard {
     pub const START_BIT: u64 = 0;
     pub const END_BIT: u64 = 63;
 
+    pub const SINGLE_BIT_BB: Lazy<[BitBoard; 64]> = Lazy::new(create_single_bit_bitboards);
+
     pub fn empty() -> BitBoard {
         return BitBoard { value: 0 };
     }
@@ -39,7 +40,7 @@ impl BitBoard {
         return BitBoard { value };
     }
 
-    pub fn raw_value(&self) -> u64 {
+    pub fn raw(&self) -> u64 {
         return self.value;
     }
 
@@ -114,12 +115,60 @@ impl BitAnd for BitBoard {
     }
 }
 
+impl BitAndAssign for BitBoard {
+    fn bitand_assign(&mut self, other: Self) {
+        self.value &= other.value;
+    }
+}
+
 impl BitOr for BitBoard {
     type Output = BitBoard;
 
     #[inline]
     fn bitor(self, other: BitBoard) -> BitBoard {
         return BitBoard::from(self.value | other.value);
+    }
+}
+
+impl BitOrAssign for BitBoard {
+    fn bitor_assign(&mut self, other: Self) {
+        self.value |= other.value;
+    }
+}
+
+impl BitXor for BitBoard {
+    type Output = Self;
+
+    fn bitxor(self, other: Self) -> Self {
+        return BitBoard::from(self.value ^ other.value)
+    }
+}
+
+impl BitXorAssign for BitBoard {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        self.value ^= rhs.value;
+    }
+}
+
+impl Not for BitBoard {
+    type Output = BitBoard;
+
+    fn not(self) -> BitBoard {
+        return BitBoard::from(!self.value);
+    }
+}
+
+impl Shl<usize> for BitBoard {
+    type Output = Self;
+    fn shl(self, rhs: usize) -> BitBoard {
+       return  BitBoard::from(self.value << rhs)
+    }
+}
+
+impl Shr<usize> for BitBoard {
+    type Output = Self;
+    fn shr(self, rhs: usize) -> BitBoard {
+        return BitBoard::from(self.value >> rhs)
     }
 }
 
@@ -190,38 +239,35 @@ mod tests {
     #[test]
     fn test_lsb() {
         let bb = BitBoard::from(0b1);
-        assert_eq!(0, bb.lsb());
+        debug_assert_eq!(0, bb.lsb());
         let bb = BitBoard::from(0b10);
-        assert_eq!(1, bb.lsb());
-
+        debug_assert_eq!(1, bb.lsb());
         let bb = BitBoard::from(0b11);
-        assert_eq!(0, bb.lsb());
-
+        debug_assert_eq!(0, bb.lsb());
         let bb = BitBoard::from(0b1000);
-        assert_eq!(3, bb.lsb());
-
+        debug_assert_eq!(3, bb.lsb());
         let bb = BitBoard::from(0b1000000000000000000000000000000000000000000000000000000000000000);
-        assert_eq!(63, bb.lsb());
+        debug_assert_eq!(63, bb.lsb());
     }
 
 
     #[test]
     fn test_msb() {
         let bb = BitBoard::from(0b1);
-        assert_eq!(0, bb.msb());
+        debug_assert_eq!(0, bb.msb());
         let bb = BitBoard::from(0b10);
-        assert_eq!(1, bb.msb());
+        debug_assert_eq!(1, bb.msb());
 
         let bb = BitBoard::from(0b11);
-        assert_eq!(1, bb.msb());
+        debug_assert_eq!(1, bb.msb());
 
         let bb = BitBoard::from(0b1000);
-        assert_eq!(3, bb.msb());
+        debug_assert_eq!(3, bb.msb());
 
         let bb = BitBoard::from(0b1000000000000000000000000000000000000000000000000000000000000000);
-        assert_eq!(63, bb.msb());
+        debug_assert_eq!(63, bb.msb());
 
         let bb = BitBoard::from(0b0001000000000000000000000000000000000000000000000000000000000000);
-        assert_eq!(60, bb.msb());
+        debug_assert_eq!(60, bb.msb());
     }
 }

@@ -148,6 +148,24 @@ impl TryFrom<usize> for Piece {
 }
 
 
+impl TryFrom<char> for Piece {
+    type Error = ();
+
+    fn try_from(v: char) -> Result<Self, Self::Error> {
+        match v {
+            x if x == Piece::King.to_char() => Ok(Piece::King),
+            x if x == Piece::Queen.to_char() => Ok(Piece::Queen),
+            x if x == Piece::Rook.to_char() => Ok(Piece::Rook),
+            x if x == Piece::Bishop.to_char() => Ok(Piece::Bishop),
+            x if x == Piece::Knight.to_char() => Ok(Piece::Knight),
+            x if x == Piece::Pawn.to_char() => Ok(Piece::Pawn),
+            x if x == Piece::None.to_char() => Ok(Piece::None),
+            x => panic!("trying to get piece type for invalid usize value {}", x),
+        }
+    }
+}
+
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
 pub struct ColoredPiece {
     pub color: Color,

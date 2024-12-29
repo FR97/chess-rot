@@ -62,3 +62,15 @@ impl TryFrom<usize> for Color {
         }
     }
 }
+
+impl TryFrom<char> for Color {
+    type Error = ();
+
+    fn try_from(v: char) -> Result<Self, Self::Error> {
+        match v {
+            x if x == Color::White.to_char() => Ok(Color::White),
+            x if x == Color::Black.to_char() => Ok(Color::Black),
+            x => panic!("trying to get color for invalid usize value {}", x),
+        }
+    }
+}

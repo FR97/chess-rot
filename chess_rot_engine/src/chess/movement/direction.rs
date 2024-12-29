@@ -1,5 +1,6 @@
-use crate::chess::Piece;
 
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Direction {
     North,
     NorthEast,
@@ -10,4 +11,8 @@ pub enum Direction {
     East,
     West,
     None,
+}
+
+impl Direction {
+
 }

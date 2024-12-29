@@ -8,7 +8,7 @@ pub struct CastlingRight {
 
 impl CastlingRight {
     const DEFAULT: u8 = 0b00001111;
-    const NO_CASTLING: u8 = 0;
+    pub const NO_CASTLING: u8 = 0;
 
     const WHITE_KING_SIDE_MASK: u8 = 0b00000001;
     const WHITE_QUEEN_SIDE_MASK: u8 = 0b00000010;
@@ -50,6 +50,13 @@ impl CastlingRight {
         return match color {
             Color::White => CastlingRight::from_raw(self.value ^ CastlingRight::WHITE_QUEEN_SIDE_MASK),
             Color::Black => CastlingRight::from_raw(self.value ^ CastlingRight::BLACK_QUEEN_SIDE_MARK),
+        };
+    }
+
+    pub fn remove_both_side_castle(&self, color: Color) -> CastlingRight {
+        return match color {
+            Color::White => CastlingRight::from_raw(self.value ^ (CastlingRight::WHITE_QUEEN_SIDE_MASK | CastlingRight::WHITE_KING_SIDE_MASK)),
+            Color::Black => CastlingRight::from_raw(self.value ^ (CastlingRight::BLACK_QUEEN_SIDE_MARK | CastlingRight::BLACK_KING_SIDE_MASK)),
         };
     }
 }
