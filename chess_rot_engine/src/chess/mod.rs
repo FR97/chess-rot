@@ -1,3 +1,4 @@
+pub mod ai;
 mod castling;
 mod movement;
 mod color;
@@ -12,7 +13,7 @@ pub use self::movement::chess_move::Move;
 pub use self::movement::move_provider;
 pub use self::movement::move_type::MoveType;
 pub use self::color::Color;
-pub use self::board_state::BoardState;
+pub use self::board_state::{BoardState, BoardIterator};
 pub use self::error::GameError;
 pub use self::piece::Piece;
 pub use self::piece::ColoredPiece;

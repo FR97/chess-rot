@@ -1,9 +1,9 @@
+use crate::bitboard::BitBoard;
+use crate::chess::game::Game;
+use crate::chess::{CastlingRight, Color, GameError, Move, MoveType, Piece, Square, SquareLabel};
 use std::error::Error;
 use std::fmt;
 use std::ops::{BitAndAssign, BitOrAssign};
-use crate::bitboard::BitBoard;
-use crate::chess::{CastlingRight, Color, GameError, Move, MoveType, Piece, Square, SquareLabel};
-use crate::chess::game::Game;
 
 #[derive(Debug, Copy, Clone)]
 pub struct BoardState {
@@ -17,14 +17,12 @@ pub struct BoardState {
     en_passant_position: Option<Square>,
 }
 
-
 impl BoardState {
     pub fn from_fen(fen: &str) -> Result<BoardState, GameError> {
         let has_error = Self::validate_fen(fen);
         if (has_error.is_some()) {
             return Err(GameError::FenFormatError(has_error.unwrap()));
         }
-
 
         let split: Vec<String> = fen.split(" ").map(|s| s.to_string()).collect();
         let fen_pieces = split.get(0).unwrap();
@@ -49,7 +47,6 @@ impl BoardState {
             ],
         ];
 
-
         let mut sq_index = 63;
         for p in fen_pieces.chars().into_iter() {
             match p {
@@ -59,17 +56,21 @@ impl BoardState {
                 'K' | 'Q' | 'R' | 'B' | 'N' | 'P' => {
                     let piece = Piece::try_from(p.to_ascii_lowercase())
                         .expect("char must be valid piece representation");
-                    pieces_for_color[Color::White.index()] |= BitBoard::SINGLE_BIT_BB[sq_index as usize];
-                    pieces[Color::White.index()][piece.index()] |= BitBoard::SINGLE_BIT_BB[sq_index as usize];
+                    pieces_for_color[Color::White.index()] |=
+                        BitBoard::SINGLE_BIT_BB[sq_index as usize];
+                    pieces[Color::White.index()][piece.index()] |=
+                        BitBoard::SINGLE_BIT_BB[sq_index as usize];
                     if (sq_index > 0) {
                         sq_index -= 1
                     }
                 }
                 'k' | 'q' | 'r' | 'b' | 'n' | 'p' => {
-                    let piece = Piece::try_from(p)
-                        .expect("char must be valid piece representation");
-                    pieces_for_color[Color::Black.index()] |= BitBoard::SINGLE_BIT_BB[sq_index as usize];
-                    pieces[Color::Black.index()][piece.index()] |= BitBoard::SINGLE_BIT_BB[sq_index as usize];
+                    let piece =
+                        Piece::try_from(p).expect("char must be valid piece representation");
+                    pieces_for_color[Color::Black.index()] |=
+                        BitBoard::SINGLE_BIT_BB[sq_index as usize];
+                    pieces[Color::Black.index()][piece.index()] |=
+                        BitBoard::SINGLE_BIT_BB[sq_index as usize];
                     if (sq_index > 0) {
                         sq_index -= 1
                     }
@@ -78,7 +79,10 @@ impl BoardState {
             }
         }
 
-        let color_on_move: Color = split.get(1).unwrap().chars()
+        let color_on_move: Color = split
+            .get(1)
+            .unwrap()
+            .chars()
             .nth(0)
             .map(|c| Color::try_from(c).unwrap())
             .unwrap();
@@ -97,13 +101,20 @@ impl BoardState {
 
         // TODO split part 3 (en passant)
 
-        let half_move_clock: u16 = split.get(4)
-            .map(|s| s.parse::<u16>().expect("half move clock must be valid number"))
+        let half_move_clock: u16 = split
+            .get(4)
+            .map(|s| {
+                s.parse::<u16>()
+                    .expect("half move clock must be valid number")
+            })
             .unwrap();
 
-
-        let full_move_number: u16 = split.get(5)
-            .map(|s| s.parse::<u16>().expect("full move number must be valid number"))
+        let full_move_number: u16 = split
+            .get(5)
+            .map(|s| {
+                s.parse::<u16>()
+                    .expect("full move number must be valid number")
+            })
             .unwrap();
 
         let ply = full_move_number * 2 + if color_on_move == Color::White { 0 } else { 1 };
@@ -134,7 +145,11 @@ impl BoardState {
 
     pub fn make_move(&self, m: Move) -> BoardState {
         debug_assert_ne!(m.get_type(), MoveType::Invalid, "cannot make invalid move");
-        debug_assert_eq!(m.get_color(), self.color_on_move, "move must match color currently on move");
+        debug_assert_eq!(
+            m.get_color(),
+            self.color_on_move,
+            "move must match color currently on move"
+        );
 
         let on_move = m.get_color();
         let next_on_move = on_move.inverse();
@@ -190,7 +205,10 @@ impl BoardState {
                 pieces_for_color[on_move.index()] ^= rook_move;
             }
             MoveType::EnPassant => {
-                debug_assert!(self.en_passant_position.is_some(), "en passant square must be set");
+                debug_assert!(
+                    self.en_passant_position.is_some(),
+                    "en passant square must be set"
+                );
                 half_move_clock = 0;
                 let captured_pawn_pos = if on_move == Color::White {
                     self.en_passant_position.unwrap().as_bb() >> 8
@@ -210,30 +228,24 @@ impl BoardState {
         }
 
         match m.get_piece() {
-            Piece::King => {
-                castling = self.castling.remove_both_side_castle(on_move)
-            }
-            Piece::Rook => {
-                match on_move {
-                    Color::White => {
-                        if m.get_from().raw() == SquareLabel::A1.as_u64() {
-                            castling = self.castling.remove_king_side_castle(Color::White);
-                        } else if m.get_from().raw() == SquareLabel::A8.as_u64() {
-                            castling = self.castling.remove_queen_side_castle(Color::White);
-                        }
-                    }
-                    Color::Black => {
-                        if m.get_from().raw() == SquareLabel::H1.as_u64() {
-                            castling = self.castling.remove_king_side_castle(Color::Black);
-                        } else if (m.get_from().raw() == SquareLabel::H8.as_u64()) {
-                            castling = self.castling.remove_queen_side_castle(Color::Black);
-                        }
+            Piece::King => castling = self.castling.remove_both_side_castle(on_move),
+            Piece::Rook => match on_move {
+                Color::White => {
+                    if m.get_from().raw() == SquareLabel::A1.as_u64() {
+                        castling = self.castling.remove_king_side_castle(Color::White);
+                    } else if m.get_from().raw() == SquareLabel::A8.as_u64() {
+                        castling = self.castling.remove_queen_side_castle(Color::White);
                     }
                 }
-            }
-            Piece::Pawn => {
-                half_move_clock = 0
-            }
+                Color::Black => {
+                    if m.get_from().raw() == SquareLabel::H1.as_u64() {
+                        castling = self.castling.remove_king_side_castle(Color::Black);
+                    } else if (m.get_from().raw() == SquareLabel::H8.as_u64()) {
+                        castling = self.castling.remove_queen_side_castle(Color::Black);
+                    }
+                }
+            },
+            Piece::Pawn => half_move_clock = 0,
             _ => {}
         }
 
@@ -263,6 +275,14 @@ impl BoardState {
         return self.ply / 2;
     }
 
+    pub fn ply(&self) -> u16 {
+        return self.ply;
+    }
+
+    pub fn on_move(&self) -> Color {
+        return self.color_on_move;
+    }
+
     fn find_piece_at_square_for_color(&self, color: Color, sqr: u8) -> Option<Piece> {
         let pieces = self.pieces[color.index()];
         for i in 0..6 {
@@ -287,7 +307,10 @@ impl BoardState {
         let split: Vec<String> = fen.split(" ").map(|s| s.to_string()).collect();
 
         if split.len() != 6 {
-            return Some(format!("invalid FEN format: fen must have 6 parts but found {}", split.len()));
+            return Some(format!(
+                "invalid FEN format: fen must have 6 parts but found {}",
+                split.len()
+            ));
         }
 
         let piece_placement = split.get(0).unwrap();
@@ -309,9 +332,14 @@ impl BoardState {
                     return Some("invalid FEN format: invalid casting rights value".to_string());
                 } else if i < castling.len() - 1 {
                     let current = allowed_values.iter().position(|v| *v == c).unwrap();
-                    let next = allowed_values.iter().position(|v| *v == castling.chars().nth(i + 1).unwrap()).unwrap();
+                    let next = allowed_values
+                        .iter()
+                        .position(|v| *v == castling.chars().nth(i + 1).unwrap())
+                        .unwrap();
                     if next < current {
-                        return Some("invalid FEN format: invalid casting rights order".to_string());
+                        return Some(
+                            "invalid FEN format: invalid casting rights order".to_string(),
+                        );
                     }
                 }
             }
@@ -323,7 +351,6 @@ impl BoardState {
         if half_move_clock.is_none() {
             return Some("invalid FEN format: invalid half move clock".to_string());
         }
-
 
         let full_moves = split.get(5).and_then(|hmc| hmc.parse::<u16>().ok());
         if full_moves.is_none() {
@@ -378,7 +405,6 @@ impl BoardState {
             Some(pos) => str.push_str("a1"),
         }
 
-
         str.push(' ');
         str.push_str(&self.half_move_clock.to_string());
 
@@ -392,7 +418,10 @@ impl BoardState {
 impl Default for BoardState {
     fn default() -> BoardState {
         return BoardState {
-            pieces_for_color: [Piece::default_bitboard_for_color(Color::White), Piece::default_bitboard_for_color(Color::Black)],
+            pieces_for_color: [
+                Piece::default_bitboard_for_color(Color::White),
+                Piece::default_bitboard_for_color(Color::Black),
+            ],
             pieces: [
                 [
                     Piece::default_bitboard_for_color_and_type(Color::White, Piece::King),
@@ -421,6 +450,40 @@ impl Default for BoardState {
     }
 }
 
+pub struct BoardIterator {
+    board_state: BoardState,
+    current_square: u8,
+}
+
+impl BoardIterator {
+    pub fn for_state(board_state: BoardState) -> Self {
+        return BoardIterator {
+            board_state,
+            current_square: 0,
+        };
+    }
+}
+
+impl Iterator for BoardIterator {
+    type Item = (usize, Piece, Option<Color>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_square >= 64 {
+            self.current_square = 0;
+            return None;
+        }
+
+        let square = self.current_square as usize;
+        return if let Some(piece) = self.board_state.get_piece_at(self.current_square) {
+            self.current_square += 1;
+            Some((square, piece.0, Some(piece.1)))
+        } else {
+            self.current_square += 1;
+            Some((square, Piece::None, None))
+        };
+    }
+}
+
 impl fmt::Display for BoardState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         return write!(f, "{}", self.to_fen());
@@ -435,35 +498,83 @@ mod test {
     fn fen() {
         let board_state = BoardState::default();
 
-        let m = Move::new(MoveType::PawnJump, SquareLabel::B2.as_u64(), SquareLabel::B4.as_u64(), Piece::Pawn, Color::White, Piece::None);
+        let m = Move::new(
+            MoveType::PawnJump,
+            SquareLabel::B2.as_u64(),
+            SquareLabel::B4.as_u64(),
+            Piece::Pawn,
+            Color::White,
+            Piece::None,
+        );
         let next_state = board_state.make_move(m);
         println!("Fen: {}", next_state.to_fen());
 
-        let m = Move::new(MoveType::PawnJump, SquareLabel::B7.as_u64(), SquareLabel::B5.as_u64(), Piece::Pawn, Color::Black, Piece::None);
+        let m = Move::new(
+            MoveType::PawnJump,
+            SquareLabel::B7.as_u64(),
+            SquareLabel::B5.as_u64(),
+            Piece::Pawn,
+            Color::Black,
+            Piece::None,
+        );
         let next_state = next_state.make_move(m);
         println!("Fen: {}", next_state.to_fen());
 
-        let m = Move::new(MoveType::Push, SquareLabel::C1.as_u64(), SquareLabel::A3.as_u64(), Piece::Knight, Color::White, Piece::None);
+        let m = Move::new(
+            MoveType::Push,
+            SquareLabel::C1.as_u64(),
+            SquareLabel::A3.as_u64(),
+            Piece::Knight,
+            Color::White,
+            Piece::None,
+        );
         let next_state = next_state.make_move(m);
         println!("Fen: {}", next_state.to_fen());
 
-        let m = Move::new(MoveType::Push, SquareLabel::C8.as_u64(), SquareLabel::A6.as_u64(), Piece::Knight, Color::Black, Piece::None);
+        let m = Move::new(
+            MoveType::Push,
+            SquareLabel::C8.as_u64(),
+            SquareLabel::A6.as_u64(),
+            Piece::Knight,
+            Color::Black,
+            Piece::None,
+        );
         let next_state = next_state.make_move(m);
         println!("Fen: {}", next_state.to_fen());
 
         // small hack with queen jump over pawn
-        let m = Move::new(MoveType::Push, SquareLabel::D1.as_u64(), SquareLabel::D3.as_u64(), Piece::Queen, Color::White, Piece::None);
+        let m = Move::new(
+            MoveType::Push,
+            SquareLabel::D1.as_u64(),
+            SquareLabel::D3.as_u64(),
+            Piece::Queen,
+            Color::White,
+            Piece::None,
+        );
         let next_state = next_state.make_move(m);
         println!("Fen: {}", next_state.to_fen());
 
-        let m = Move::new(MoveType::Push, SquareLabel::D8.as_u64(), SquareLabel::D5.as_u64(), Piece::Queen, Color::Black, Piece::None);
+        let m = Move::new(
+            MoveType::Push,
+            SquareLabel::D8.as_u64(),
+            SquareLabel::D5.as_u64(),
+            Piece::Queen,
+            Color::Black,
+            Piece::None,
+        );
         let next_state = next_state.make_move(m);
         println!("Fen: {}", next_state.to_fen());
 
-        let castling = Move::new(MoveType::Castling, SquareLabel::E1.as_u64(), SquareLabel::C1.as_u64(), Piece::King, Color::White, Piece::None);
+        let castling = Move::new(
+            MoveType::Castling,
+            SquareLabel::E1.as_u64(),
+            SquareLabel::C1.as_u64(),
+            Piece::King,
+            Color::White,
+            Piece::None,
+        );
         let next_state = next_state.make_move(castling);
         println!("Fen: {}", next_state.to_fen());
-
 
         let fen = BoardState::default().to_fen();
         println!("FEN: {}", fen);
