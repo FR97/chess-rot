@@ -1,8 +1,116 @@
 use crate::bitboard::BitBoard;
-use crate::chess::movement::direction::Direction;
 use crate::chess::{BoardState, Color, ColoredPiece, Move, MoveType, Piece};
 use std::cmp::PartialEq;
-use std::ptr::null;
+use crate::chess::movement::move_generator::{DiagonalMoveGenerator, PawnMoveGenerator, LineMoveGenerator, KnightJumpMoveGenerator, MoveGenerator, KingMoveGenerator};
+
+
+pub struct MoveProvider {
+    king_move_generator: KingMoveGenerator,
+    pawn_move_generator: PawnMoveGenerator,
+    knight_jump_move_generator: KnightJumpMoveGenerator,
+    diagonal_move_generator: DiagonalMoveGenerator,
+    line_move_generator: LineMoveGenerator,
+}
+
+impl MoveProvider {
+    pub const INSTANCE: MoveProvider = MoveProvider::new();
+
+    pub const fn new() -> Self {
+        return Self {
+            king_move_generator: KingMoveGenerator::new(),
+            pawn_move_generator: PawnMoveGenerator::new(),
+            knight_jump_move_generator: KnightJumpMoveGenerator::new(),
+            diagonal_move_generator: DiagonalMoveGenerator::new(),
+            line_move_generator: LineMoveGenerator::new(),
+        };
+    }
+
+    pub fn attacks_for_color(&self, board_state: &BoardState, color: Color) -> BitBoard {
+        return self.line_move_generator.generate_attacks(board_state, color)
+            | self.diagonal_move_generator.generate_attacks(board_state, color)
+            | self.pawn_move_generator.generate_attacks(board_state, color)
+            | self.knight_jump_move_generator.generate_attacks(board_state, color)
+            | self.king_move_generator.generate_attacks(board_state, color);
+    }
+
+    pub fn for_each_move(&self, board: &BoardState, f: &mut impl FnMut(Move)) {
+        self.line_move_generator.generate_moves(board, f);
+        self.diagonal_move_generator.generate_moves(board, f);
+        self.pawn_move_generator.generate_moves(board, f);
+        self.knight_jump_move_generator.generate_moves(board, f);
+        self.king_move_generator.generate_moves(board, f);
+    }
+
+    pub fn legal_moves(&self, board: &BoardState) -> Vec<Move> {
+        let mut moves = Vec::new();
+        self.for_each_move(board, &mut |m| {
+            let after_move = board.make_move(m);
+            if !self.is_king_under_attack(&after_move) {
+                moves.push(m);
+            }
+        });
+        return moves;
+    }
+
+    pub fn is_king_under_attack(&self, board: &BoardState) -> bool {
+        let king_square = board.get_king(board.color_on_move.inverse()).lsb();
+        if (king_square == 0) {
+            return false;
+        }
+
+        let all_pieces = board.all_pieces();
+        let pieces_on_move = board.pieces[board.color_on_move.index()];
+
+        if !(pieces_on_move[Piece::Pawn.index()] & self.pawn_move_generator.cached_attacks[board.color_on_move.inverse().index()][king_square]).is_empty() {
+            return true;
+        }
+
+        if !(pieces_on_move[Piece::Knight.index()] & self.knight_jump_move_generator.cached_attacks[king_square]).is_empty() {
+            return true;
+        }
+
+        if !(pieces_on_move[Piece::King.index()] & self.king_move_generator.cached_attacks[king_square]).is_empty() {
+            return true;
+        }
+
+        let line_moving = pieces_on_move[Piece::Rook.index()] | pieces_on_move[Piece::Queen.index()];
+        let rank_mask = (all_pieces & self.line_move_generator.rank_mask[king_square]).raw() as usize;
+        if !(self.line_move_generator.rank_attacks[king_square][rank_mask >> self.line_move_generator.rank_shift[king_square]] & line_moving).is_empty() {
+            return true;
+        }
+
+        let file_mask = (all_pieces & self.line_move_generator.file_mask[king_square]).raw();
+        if !(self.line_move_generator.rank_attacks[king_square][(file_mask * self.line_move_generator.file_magic[king_square].raw()) as usize >> 57] & line_moving).is_empty() {
+            return true;
+        }
+
+        let diagonal_moving = pieces_on_move[Piece::Bishop.index()] | pieces_on_move[Piece::Queen.index()];
+        let mask_a1h8 = (all_pieces & self.diagonal_move_generator.a1h8_mask[king_square]).raw();
+        if !(self.diagonal_move_generator.a1h8_attacks[king_square][(mask_a1h8 * self.diagonal_move_generator.a1h8_magic[king_square].raw()) as usize >> 57] & diagonal_moving).is_empty() {
+            return true;
+        }
+
+        let mask_a8h1 = (all_pieces & self.diagonal_move_generator.a8h1_mask[king_square]).raw();
+        if !(self.diagonal_move_generator.a8h1_attacks[king_square][(mask_a8h1 * self.diagonal_move_generator.a8h1_magic[king_square].raw()) as usize >> 57] & diagonal_moving).is_empty() {
+            return true;
+        }
+
+        return false;
+    }
+
+    pub fn is_under_attack(
+        &self,
+        board: &BoardState,
+        color: Color,
+        b: BitBoard,
+    ) -> bool {
+        return !(self.line_move_generator.generate_attacks(board, color) & b).is_empty()
+            || !(self.diagonal_move_generator.generate_attacks(board, color) & b).is_empty()
+            || !(self.pawn_move_generator.generate_attacks(board, color) & b).is_empty()
+            || !(self.knight_jump_move_generator.generate_attacks(board, color) & b).is_empty()
+            || !(self.king_move_generator.generate_attacks(board, color) & b).is_empty();
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct PreGeneratedMoveProvider {
@@ -35,7 +143,7 @@ impl PreGeneratedMoveProvider {
         [1, 0, 0, 0, 0, 0, 0, 0],
     ];
 
-    fn generate_moves(position: usize, piece: Piece, color: Color) -> Vec<Move> {
+    fn generate_all_possible_moves(position: usize, piece: Piece, color: Color) -> Vec<Move> {
         let mut i = 0;
         let mut vec = Vec::new();
         while i < 8 && Self::OFFSETS[piece.index()][i] != 0 {
@@ -147,59 +255,182 @@ impl PreGeneratedMoveProvider {
 
         return vec;
     }
-}
 
-pub trait MoveProvider {
-    fn get_available_moves(self, state: BoardState, for_position: u64) -> Vec<Move>;
-}
+    pub fn get_valid_moves(self, board_state: BoardState, position: u64) -> Vec<Move> {
+        let mut i = 0;
+        let mut vec = Vec::new();
+        let p = board_state.get_piece_at(position);
+        if (p.is_none()) {
+            return Vec::new();
+        }
 
-impl MoveProvider for PreGeneratedMoveProvider {
-    fn get_available_moves(self, state: BoardState, for_position: u64) -> Vec<Move> {
-        let piece = state.get_piece_at(for_position as u8);
-        if let Some(colored_piece) = piece {
-            if colored_piece.0 == Piece::None {
-                return Vec::with_capacity(0);
-            }
+        let (piece, color) = p.unwrap();
 
-            let piece_index = colored_piece.0.index()
-                + if colored_piece.1 == Color::White {
-                    0
-                } else {
-                    6
-                };
-            let all_possible = self.cached_moves[piece_index][for_position as usize].clone();
-
-            let valid = all_possible
-                .into_iter()
-                .filter(|m| {
-                    if let Some(colored_piece) = state.get_piece_at(m.get_to().raw() as u8) {
-                        colored_piece.1 != state.on_move()
+        while i < 8 && Self::OFFSETS[piece.index()][i] != 0 {
+            match piece {
+                Piece::King | Piece::Knight => {
+                    let mut possible = Self::MAILBOX
+                        [(Self::MAILBOX64[position as usize] + Self::OFFSETS[piece.index()][i]) as usize];
+                    if possible != -1 {
+                        let m = Move::new(
+                            MoveType::Push,
+                            position,
+                            possible as u64,
+                            piece,
+                            color,
+                            Piece::None,
+                        );
+                        vec.push(m);
+                    }
+                }
+                Piece::Queen | Piece::Rook | Piece::Bishop => {
+                    let mut possible = Self::MAILBOX
+                        [(Self::MAILBOX64[position as usize] + Self::OFFSETS[piece.index()][i]) as usize];
+                    while possible != -1 {
+                        let m = Move::new(
+                            MoveType::Push,
+                            position,
+                            possible as u64,
+                            piece,
+                            color,
+                            Piece::None,
+                        );
+                        vec.push(m);
+                        possible = Self::MAILBOX[(Self::MAILBOX64[possible as usize]
+                            + Self::OFFSETS[piece.index()][i])
+                            as usize];
+                    }
+                }
+                Piece::Pawn => {
+                    let direction = if color == Color::White { 1 } else { -1 };
+                    let starting_position_range = if color == Color::White {
+                        (8, 15)
                     } else {
-                        true
-                    }
-                })
-                .filter(|m| match m.get_type() {
-                    MoveType::Push | MoveType::PawnJump => {
-                        state.get_piece_at(m.get_to().raw() as u8).is_none()
-                    }
-                    MoveType::Capture => {
-                        if let Some(colored_piece) = state.get_piece_at(m.get_to().raw() as u8) {
-                            colored_piece.1 == state.on_move()
-                        } else {
-                            false
+                        (48, 55)
+                    };
+
+                    // one field ahead
+                    let mut possible =
+                        Self::MAILBOX[(Self::MAILBOX64[position as usize] + 10 * direction) as usize];
+                    if possible != -1 {
+                        let m = Move::new(
+                            MoveType::Push,
+                            position,
+                            possible as u64,
+                            piece,
+                            color,
+                            Piece::None,
+                        );
+                        vec.push(m);
+                        // double jump
+                        if position >= starting_position_range.0
+                            && position <= starting_position_range.1
+                        {
+                            possible = Self::MAILBOX
+                                [(Self::MAILBOX64[position as usize] + 20 * direction) as usize];
+                            let m = Move::new(
+                                MoveType::PawnJump,
+                                position,
+                                possible as u64,
+                                piece,
+                                color,
+                                Piece::None,
+                            );
+                            vec.push(m);
                         }
                     }
-                    MoveType::Invalid => false,
-                    _ => false,
-                })
-                .collect();
 
-            return valid;
+                    let mut possible =
+                        Self::MAILBOX[(Self::MAILBOX64[position as usize] + 10 * direction - 1) as usize];
+                    if possible != -1 {
+                        let m = Move::new(
+                            MoveType::Capture,
+                            position,
+                            possible as u64,
+                            piece,
+                            color,
+                            Piece::None,
+                        );
+                        vec.push(m);
+                    }
+
+                    let mut possible =
+                        Self::MAILBOX[(Self::MAILBOX64[position as usize] + 10 * direction + 1) as usize];
+                    if possible != -1 {
+                        let m = Move::new(
+                            MoveType::Capture,
+                            position as u64,
+                            possible as u64,
+                            piece,
+                            color,
+                            Piece::None,
+                        );
+                        vec.push(m);
+                    }
+                }
+                Piece::None => {}
+            }
+            i += 1;
         }
-        return Vec::with_capacity(0);
+
+        return vec;
+
+
+        return Vec::new();
     }
 }
 
+// pub trait MoveProvider {
+//     fn get_available_moves(self, state: BoardState, for_position: u64) -> Vec<Move>;
+// }
+//
+// impl MoveProvider for PreGeneratedMoveProvider {
+//     fn get_available_moves(self, state: BoardState, for_position: u64) -> Vec<Move> {
+//         let piece = state.get_piece_at(for_position as u8);
+//         if let Some(colored_piece) = piece {
+//             if colored_piece.0 == Piece::None {
+//                 return Vec::with_capacity(0);
+//             }
+//
+//             let piece_index = colored_piece.0.index()
+//                 + if colored_piece.1 == Color::White {
+//                 0
+//             } else {
+//                 6
+//             };
+//             let all_possible = self.cached_moves[piece_index][for_position as usize].clone();
+//
+//             let valid = all_possible
+//                 .into_iter()
+//                 .filter(|m| {
+//                     if let Some(colored_piece) = state.get_piece_at(m.get_to().raw() as u8) {
+//                         colored_piece.1 != state.on_move()
+//                     } else {
+//                         true
+//                     }
+//                 })
+//                 .filter(|m| match m.get_type() {
+//                     MoveType::Push | MoveType::PawnJump => {
+//                         state.get_piece_at(m.get_to().raw() as u8).is_none()
+//                     }
+//                     MoveType::Capture => {
+//                         if let Some(colored_piece) = state.get_piece_at(m.get_to().raw() as u8) {
+//                             colored_piece.1 == state.on_move()
+//                         } else {
+//                             false
+//                         }
+//                     }
+//                     MoveType::Invalid => false,
+//                     _ => false,
+//                 })
+//                 .collect();
+//
+//             return valid;
+//         }
+//         return Vec::with_capacity(0);
+//     }
+// }
+//
 impl Default for PreGeneratedMoveProvider {
     fn default() -> Self {
         let start = std::time::Instant::now();
@@ -210,9 +441,9 @@ impl Default for PreGeneratedMoveProvider {
             let piece = Piece::try_from(i).expect("cannot convert index to piece");
             for sqr in 0..64 {
                 let white_moves =
-                    PreGeneratedMoveProvider::generate_moves(sqr, piece, Color::White);
+                    PreGeneratedMoveProvider::generate_all_possible_moves(sqr, piece, Color::White);
                 let black_moves =
-                    PreGeneratedMoveProvider::generate_moves(sqr, piece, Color::Black);
+                    PreGeneratedMoveProvider::generate_all_possible_moves(sqr, piece, Color::Black);
                 moves[i][sqr] = white_moves;
                 moves[i + 6][sqr] = black_moves;
             }
@@ -237,11 +468,11 @@ mod test {
 
     #[test]
     fn test_generate_moves() {
-        let bb = PreGeneratedMoveProvider::generate_moves(0, Piece::Rook, Color::White);
-        let bb = PreGeneratedMoveProvider::generate_moves(27, Piece::Rook, Color::Black);
-        let bb = PreGeneratedMoveProvider::generate_moves(27, Piece::King, Color::White);
-        let bb = PreGeneratedMoveProvider::generate_moves(32, Piece::Queen, Color::Black);
-        let bb = PreGeneratedMoveProvider::generate_moves(9, Piece::Pawn, Color::White);
+        let bb = PreGeneratedMoveProvider::generate_all_possible_moves(0, Piece::Rook, Color::White);
+        let bb = PreGeneratedMoveProvider::generate_all_possible_moves(27, Piece::Rook, Color::Black);
+        let bb = PreGeneratedMoveProvider::generate_all_possible_moves(27, Piece::King, Color::White);
+        let bb = PreGeneratedMoveProvider::generate_all_possible_moves(32, Piece::Queen, Color::Black);
+        let bb = PreGeneratedMoveProvider::generate_all_possible_moves(9, Piece::Pawn, Color::White);
 
         // let bb = PreGeneratedMoveProvider::generate_moves_in_direction(0, 0, Direction::NorthEast);
         // println!("{}", bb);

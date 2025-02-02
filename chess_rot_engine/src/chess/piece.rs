@@ -55,6 +55,8 @@ impl Piece {
         ],
     ];
 
+    pub const LIST: [Piece; 6] = [Piece::Pawn, Piece::Rook, Piece::Knight, Piece::Bishop, Piece::Queen, Piece::King];
+
     pub fn default_bitboard_for_color(color: Color) -> BitBoard {
         return match color {
             Color::White => BitBoard::from(Self::DEFAULT_WHITE_PIECES),
@@ -75,7 +77,7 @@ impl Piece {
         return usize::try_from(self.to_u64()).unwrap_or(6);
     }
 
-    pub fn value(self) -> usize {
+    pub fn value(self) -> u32 {
         match self {
             Piece::King => 30000,
             Piece::Queen => 900,

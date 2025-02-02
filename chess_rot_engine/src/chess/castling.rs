@@ -12,8 +12,10 @@ impl CastlingRight {
 
     const WHITE_KING_SIDE_MASK: u8 = 0b00000001;
     const WHITE_QUEEN_SIDE_MASK: u8 = 0b00000010;
+    const WHITE_CASTLED_MASK: u8 = 0b00010000;
     const BLACK_KING_SIDE_MASK: u8 = 0b00000100;
     const BLACK_QUEEN_SIDE_MARK: u8 = 0b00001000;
+    const BLACK_CASTLED_MASK: u8 = 0b00100000;
 
     pub fn default() -> CastlingRight {
         return CastlingRight { value: CastlingRight::DEFAULT };
@@ -59,25 +61,39 @@ impl CastlingRight {
             Color::Black => CastlingRight::from_raw(self.value ^ (CastlingRight::BLACK_QUEEN_SIDE_MARK | CastlingRight::BLACK_KING_SIDE_MASK)),
         };
     }
+
+    pub fn set_castled(&self, color: Color) -> CastlingRight {
+        return match color {
+            Color::White => CastlingRight::from_raw(self.value ^ CastlingRight::WHITE_CASTLED_MASK),
+            Color::Black => CastlingRight::from_raw(self.value ^ CastlingRight::BLACK_CASTLED_MASK),
+        };
+    }
+
+    pub fn castled(&self, color: Color) -> bool {
+        return match color {
+            Color::White => self.value & CastlingRight::WHITE_CASTLED_MASK != 0,
+            Color::Black => self.value & CastlingRight::BLACK_CASTLED_MASK != 0,
+        };
+    }
 }
 
 impl fmt::Display for CastlingRight {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut str = String::new();
 
-        if(self.is_white_king_side_allowed()){
+        if (self.is_white_king_side_allowed()) {
             str.push('K');
         }
 
-        if(self.is_white_queen_side_allowed()){
+        if (self.is_white_queen_side_allowed()) {
             str.push('Q');
         }
 
-        if(self.is_black_king_side_allowed()){
+        if (self.is_black_king_side_allowed()) {
             str.push('k');
         }
 
-        if(self.is_black_queen_side_allowed()){
+        if (self.is_black_queen_side_allowed()) {
             str.push('q');
         }
 

@@ -7,15 +7,17 @@ use std::ops::{BitAndAssign, BitOrAssign};
 
 #[derive(Debug, Copy, Clone)]
 pub struct BoardState {
-    pieces_for_color: [BitBoard; 2],
-    pieces: [[BitBoard; 6]; 2],
+    pub pieces_for_color: [BitBoard; 2],
+    pub pieces: [[BitBoard; 6]; 2],
     half_move_clock: u16,
     ply: u16,
     score: i16,
-    color_on_move: Color,
-    castling: CastlingRight,
-    en_passant_position: Option<Square>,
+    pub color_on_move: Color,
+    pub castling: CastlingRight,
+    pub en_passant_position: Option<Square>,
 }
+
+impl BoardState {}
 
 impl BoardState {
     pub fn from_fen(fen: &str) -> Result<BoardState, GameError> {
@@ -47,11 +49,18 @@ impl BoardState {
             ],
         ];
 
+        let mut rank = 7;
+        let mut file = 0;
         let mut sq_index = 63;
         for p in fen_pieces.chars().into_iter() {
+            sq_index = rank * 8 + file;
             match p {
                 '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' => {
-                    sq_index -= p.to_digit(10).unwrap();
+                    let digit = p.to_digit(10).unwrap();
+                    if (digit > 8) {
+                        return Err(GameError::FenFormatError("Invalid FEN format".to_string()));
+                    }
+                    file = file + digit
                 }
                 'K' | 'Q' | 'R' | 'B' | 'N' | 'P' => {
                     let piece = Piece::try_from(p.to_ascii_lowercase())
@@ -60,9 +69,7 @@ impl BoardState {
                         BitBoard::SINGLE_BIT_BB[sq_index as usize];
                     pieces[Color::White.index()][piece.index()] |=
                         BitBoard::SINGLE_BIT_BB[sq_index as usize];
-                    if (sq_index > 0) {
-                        sq_index -= 1
-                    }
+                    file += 1
                 }
                 'k' | 'q' | 'r' | 'b' | 'n' | 'p' => {
                     let piece =
@@ -74,6 +81,15 @@ impl BoardState {
                     if (sq_index > 0) {
                         sq_index -= 1
                     }
+                    file += 1
+                }
+                '/' => {
+                    if (rank == 0) {
+                        break;
+                    }
+
+                    rank -= 1;
+                    file = 0;
                 }
                 _ => {}
             }
@@ -131,7 +147,7 @@ impl BoardState {
         });
     }
 
-    pub fn get_piece_at(&self, sqr: u8) -> Option<(Piece, Color)> {
+    pub fn get_piece_at(&self, sqr: u64) -> Option<(Piece, Color)> {
         return if self.pieces_for_color[Color::White.index()].is_bit_set(sqr) {
             self.find_piece_at_square_for_color(Color::White, sqr)
                 .map(|p| (p, Color::White))
@@ -143,19 +159,38 @@ impl BoardState {
         };
     }
 
-    pub fn make_move(&self, m: Move) -> BoardState {
-        debug_assert_ne!(m.get_type(), MoveType::Invalid, "cannot make invalid move");
-        debug_assert_eq!(
-            m.get_color(),
-            self.color_on_move,
-            "move must match color currently on move"
-        );
+    pub fn get_king(&self, color: Color) -> BitBoard {
+        return self.pieces[color.index()][Piece::King.index()];
+    }
 
-        let on_move = m.get_color();
+    pub fn all_pieces(&self) -> BitBoard {
+        return self.pieces_for_color[0] | self.pieces_for_color[1];
+    }
+
+    pub fn board_to_attack(&self) -> BitBoard {
+        return !self.pieces_for_color[self.color_on_move.index()];
+    }
+
+    pub fn opposite_pieces(&self) -> BitBoard {
+        return self.pieces_for_color[self.color_on_move.inverse().index()];
+    }
+
+    pub fn make_move(&self, m: Move) -> BoardState {
+        // debug_assert_ne!(m.get_type(), MoveType::Invalid, "cannot make invalid move");
+        // debug_assert_eq!(
+        //     m.get_color(),
+        //     self.color_on_move,
+        //     "move must match color currently on move"
+        // );
+
+        let on_move = self.color_on_move;
         let next_on_move = on_move.inverse();
         let from_bb = m.get_from().as_bb();
         let to_bb = m.get_to().as_bb();
         let from_to_bb = from_bb | to_bb;
+        let (moving_piece, moving_color) = self.get_piece_at(m.get_from().raw()).unwrap();
+
+        debug_assert_eq!(moving_color, on_move, "Trying to move invalid piece from {}", m.get_from().raw());
 
         let mut pieces = self.pieces.clone();
         let mut pieces_for_color = self.pieces_for_color.clone();
@@ -165,70 +200,109 @@ impl BoardState {
         let mut castling = self.castling;
         let mut en_passant_position = None;
 
-        pieces[on_move.index()][m.get_piece().index()] ^= from_to_bb;
+        pieces[on_move.index()][moving_piece.index()] ^= from_to_bb;
         pieces_for_color[on_move.index()] ^= from_to_bb;
 
-        match m.get_type() {
-            MoveType::PawnJump => {
-                en_passant_position = if on_move == Color::White {
-                    Some(Square::new(m.get_to().raw() - 8))
-                } else {
-                    Some(Square::new(m.get_to().raw() + 8))
-                }
-            }
-            MoveType::Capture => {
-                half_move_clock = 0;
-                pieces[next_on_move.index()][m.get_target_piece().index()] ^= to_bb;
-                pieces_for_color[next_on_move.index()] ^= to_bb;
-            }
-            MoveType::Castling => {
-                let rook_move = match self.color_on_move {
+        let captured_piece = self.get_piece_at(m.get_to().raw());
+
+        if captured_piece.is_some() {
+            half_move_clock = 0;
+            let (p, c) = captured_piece.unwrap();
+            pieces[next_on_move.index()][p.index()] ^= to_bb;
+            pieces_for_color[next_on_move.index()] ^= to_bb;
+        }
+
+        // match m.get_type() {
+        //     MoveType::PawnJump => {
+        //         en_passant_position = if on_move == Color::White {
+        //             Some(Square::new(m.get_to().raw() - 8))
+        //         } else {
+        //             Some(Square::new(m.get_to().raw() + 8))
+        //         }
+        //     }
+        //     MoveType::Capture => {
+        //         half_move_clock = 0;
+        //         pieces[next_on_move.index()][m.get_target_piece().index()] ^= to_bb;
+        //         pieces_for_color[next_on_move.index()] ^= to_bb;
+        //     }
+        //     MoveType::Castling => {
+        //         let rook_move = match self.color_on_move {
+        //             Color::White => {
+        //                 // checks whether its king or queen side castle
+        //                 if m.get_to().raw() == SquareLabel::C1.as_u64() {
+        //                     SquareLabel::A1.to_bb() | SquareLabel::D1.to_bb()
+        //                 } else {
+        //                     SquareLabel::H1.to_bb() | SquareLabel::F1.to_bb()
+        //                 }
+        //             }
+        //
+        //             Color::Black => {
+        //                 if m.get_to().raw() == SquareLabel::C8.as_u64() {
+        //                     SquareLabel::A8.to_bb() | SquareLabel::D8.to_bb()
+        //                 } else {
+        //                     SquareLabel::H8.to_bb() | SquareLabel::F8.to_bb()
+        //                 }
+        //             }
+        //         };
+        //
+        //         pieces[on_move.index()][Piece::Rook.index()] ^= rook_move;
+        //         pieces_for_color[on_move.index()] ^= rook_move;
+        //     }
+        //     MoveType::EnPassant => {
+        //         debug_assert!(
+        //             self.en_passant_position.is_some(),
+        //             "en passant square must be set"
+        //         );
+        //         half_move_clock = 0;
+        //         let captured_pawn_pos = if on_move == Color::White {
+        //             self.en_passant_position.unwrap().as_bb() >> 8
+        //         } else {
+        //             self.en_passant_position.unwrap().as_bb() << 8
+        //         };
+        //
+        //         pieces[next_on_move.index()][Piece::Pawn.index()] ^= captured_pawn_pos;
+        //         pieces_for_color[next_on_move.index()] ^= captured_pawn_pos;
+        //     }
+        //     MoveType::Promotion => {
+        //         pieces[on_move.index()][Piece::Pawn.index()] &= !to_bb;
+        //         let new_piece = m.get_target_piece();
+        //         pieces[on_move.index()][new_piece.index()] |= to_bb;
+        //     }
+        //     _ => {}
+        // }
+
+        match moving_piece {
+            Piece::King => {
+                let rook_move = match on_move {
                     Color::White => {
                         // checks whether its king or queen side castle
-                        if m.get_to().raw() == SquareLabel::C1.as_u64() {
+                        if m.get_from() == Square::E1 && m.get_to() == Square::C1 {
                             SquareLabel::A1.to_bb() | SquareLabel::D1.to_bb()
-                        } else {
+                        } else if m.get_from() == Square::E1 && m.get_to() == Square::G1 {
                             SquareLabel::H1.to_bb() | SquareLabel::F1.to_bb()
+                        } else {
+                            BitBoard::empty()
                         }
                     }
 
                     Color::Black => {
-                        if m.get_to().raw() == SquareLabel::C8.as_u64() {
+                        // checks whether its king or queen side castle
+                        if m.get_from() == Square::E8 && m.get_to() == Square::C8 {
                             SquareLabel::A8.to_bb() | SquareLabel::D8.to_bb()
-                        } else {
+                        } else if m.get_from() == Square::E1 && m.get_to() == Square::G8 {
                             SquareLabel::H8.to_bb() | SquareLabel::F8.to_bb()
+                        } else {
+                            BitBoard::empty()
                         }
                     }
                 };
 
-                pieces[on_move.index()][Piece::Rook.index()] ^= rook_move;
-                pieces_for_color[on_move.index()] ^= rook_move;
+                if !rook_move.is_empty() {
+                    pieces[on_move.index()][Piece::Rook.index()] ^= rook_move;
+                    pieces_for_color[on_move.index()] ^= rook_move;
+                }
+                castling = self.castling.remove_both_side_castle(on_move);
             }
-            MoveType::EnPassant => {
-                debug_assert!(
-                    self.en_passant_position.is_some(),
-                    "en passant square must be set"
-                );
-                half_move_clock = 0;
-                let captured_pawn_pos = if on_move == Color::White {
-                    self.en_passant_position.unwrap().as_bb() >> 8
-                } else {
-                    self.en_passant_position.unwrap().as_bb() << 8
-                };
-
-                pieces[next_on_move.index()][Piece::Pawn.index()] ^= captured_pawn_pos;
-                pieces_for_color[next_on_move.index()] ^= captured_pawn_pos;
-            }
-            MoveType::Promotion => {
-                pieces[on_move.index()][Piece::Pawn.index()] &= !to_bb;
-                let new_piece = m.get_target_piece();
-                pieces[on_move.index()][new_piece.index()] |= to_bb;
-            }
-            _ => {}
-        }
-
-        match m.get_piece() {
-            Piece::King => castling = self.castling.remove_both_side_castle(on_move),
             Piece::Rook => match on_move {
                 Color::White => {
                     if m.get_from().raw() == SquareLabel::A1.as_u64() {
@@ -261,7 +335,7 @@ impl BoardState {
         };
     }
 
-    pub fn remove_piece(&mut self, sqr: u8) {
+    pub fn remove_piece(&mut self, sqr: u64) {
         let removed = self.get_piece_at(sqr);
         if removed.is_some() {
             let p = removed.unwrap();
@@ -283,7 +357,7 @@ impl BoardState {
         return self.color_on_move;
     }
 
-    fn find_piece_at_square_for_color(&self, color: Color, sqr: u8) -> Option<Piece> {
+    fn find_piece_at_square_for_color(&self, color: Color, sqr: u64) -> Option<Piece> {
         let pieces = self.pieces[color.index()];
         for i in 0..6 {
             if pieces[i].is_bit_set(sqr) {
@@ -293,7 +367,7 @@ impl BoardState {
         return None;
     }
 
-    fn find_piece_bb_at_sqr_for_color(&self, color: Color, sqr: u8) -> Option<BitBoard> {
+    fn find_piece_bb_at_sqr_for_color(&self, color: Color, sqr: u64) -> Option<BitBoard> {
         let pieces = self.pieces[color.index()];
         for i in 0..6 {
             if pieces[i].is_bit_set(sqr) {
@@ -303,12 +377,33 @@ impl BoardState {
         return None;
     }
 
+    pub fn can_make_move(self, m: Move) -> bool {
+        if (m.get_type() == MoveType::Invalid) {
+            return false;
+        }
+
+        if (self.color_on_move != m.get_color()) {
+            return false;
+        }
+
+        if (m.get_type() == MoveType::Capture
+            && self.get_piece_at(m.get_to().raw()).filter(|(p, c)| { self.color_on_move == c.inverse() }).is_none()) {
+            return false;
+        }
+
+        if (m.get_type() == MoveType::EnPassant && self.en_passant_position == None) {
+            return false;
+        }
+
+        return true;
+    }
+
     pub fn validate_fen(fen: &str) -> Option<String> {
         let split: Vec<String> = fen.split(" ").map(|s| s.to_string()).collect();
 
         if split.len() != 6 {
             return Some(format!(
-                "invalid FEN format: fen must have 6 parts but found {}",
+                "Invalid FEN format: fen must have 6 parts but found {}",
                 split.len()
             ));
         }
@@ -317,19 +412,19 @@ impl BoardState {
 
         let color_on_move = split.get(1).unwrap();
         if color_on_move != "w" && color_on_move != "b" {
-            return Some("invalid FEN format: active color can either be 'w' or 'b'".to_string());
+            return Some("Invalid FEN format: active color can either be 'w' or 'b'".to_string());
         }
 
         let castling = split.get(2).unwrap().to_string();
         if castling.is_empty() || castling.len() > 4 {
-            return Some("invalid FEN format: invalid casting rights value".to_string());
+            return Some("Invalid FEN format: invalid casting rights value".to_string());
         }
 
         if (castling != "-") {
             let allowed_values = ['K', 'Q', 'k', 'q'];
             for (i, c) in castling.chars().enumerate() {
                 if !allowed_values.contains(&c) {
-                    return Some("invalid FEN format: invalid casting rights value".to_string());
+                    return Some("Invalid FEN format: invalid casting rights value".to_string());
                 } else if i < castling.len() - 1 {
                     let current = allowed_values.iter().position(|v| *v == c).unwrap();
                     let next = allowed_values
@@ -338,7 +433,7 @@ impl BoardState {
                         .unwrap();
                     if next < current {
                         return Some(
-                            "invalid FEN format: invalid casting rights order".to_string(),
+                            "Invalid FEN format: invalid casting rights order".to_string(),
                         );
                     }
                 }
@@ -349,12 +444,12 @@ impl BoardState {
 
         let half_move_clock = split.get(4).and_then(|hmc| hmc.parse::<u8>().ok());
         if half_move_clock.is_none() {
-            return Some("invalid FEN format: invalid half move clock".to_string());
+            return Some("Invalid FEN format: invalid half move clock".to_string());
         }
 
         let full_moves = split.get(5).and_then(|hmc| hmc.parse::<u16>().ok());
         if full_moves.is_none() {
-            return Some("invalid FEN format: invalid half move clock".to_string());
+            return Some("Invalid FEN format: invalid half move clock".to_string());
         }
 
         return None;
@@ -368,7 +463,7 @@ impl BoardState {
         for rank in 0..8 {
             let mut empty_count = 0;
             for file in (0..8).rev() {
-                let position = (BitBoard::END_BIT - (rank * 8) - file) as u8;
+                let position = (BitBoard::END_BIT - (rank * 8) - file);
                 match self.get_piece_at(position) {
                     None => {
                         empty_count = empty_count + 1;
@@ -452,7 +547,7 @@ impl Default for BoardState {
 
 pub struct BoardIterator {
     board_state: BoardState,
-    current_square: u8,
+    current_square: u64,
 }
 
 impl BoardIterator {

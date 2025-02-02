@@ -9,7 +9,6 @@ pub enum Color {
 }
 
 impl Color {
-
     pub fn to_u64(self) -> u64 {
         return self as u64;
     }
@@ -29,6 +28,13 @@ impl Color {
         return match self {
             Color::White => 'w',
             Color::Black => 'b',
+        };
+    }
+
+    pub const fn factor(&self) -> i32 {
+        return match self {
+            Color::White => 1,
+            Color::Black => -1,
         };
     }
 }

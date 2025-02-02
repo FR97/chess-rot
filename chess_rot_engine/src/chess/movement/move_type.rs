@@ -1,3 +1,5 @@
+use crate::chess::move_provider::MoveProvider;
+
 #[repr(u64)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum MoveType {
@@ -32,6 +34,7 @@ impl TryFrom<u64> for MoveType {
             x if x == MoveType::Castling.to_u64() => Ok(MoveType::Castling),
             x if x == MoveType::EnPassant.to_u64() => Ok(MoveType::EnPassant),
             x if x == MoveType::Promotion.to_u64() => Ok(MoveType::Promotion),
+            x if x == MoveType::Invalid.to_u64() => Ok(MoveType::Invalid),
             x => panic!("trying to get move type for invalid u64 value {}", x),
         }
     }
@@ -48,6 +51,7 @@ impl TryFrom<usize> for MoveType {
             x if x == MoveType::Castling.index() => Ok(MoveType::Castling),
             x if x == MoveType::EnPassant.index() => Ok(MoveType::EnPassant),
             x if x == MoveType::Promotion.index() => Ok(MoveType::Promotion),
+            x if x == MoveType::Invalid.index() => Ok(MoveType::Invalid),
             x => panic!("trying to get move type for invalid usize value {}", x),
         }
     }

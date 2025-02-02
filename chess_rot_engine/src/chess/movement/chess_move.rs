@@ -53,6 +53,28 @@ impl Move {
         };
     }
 
+    pub fn from_to_target(from: u64, to: u64, target_piece: Piece) -> Self {
+        let bb_value = MoveType::Invalid.to_u64()
+            | (from << Self::FROM_OFFSET)
+            | (to << Self::TO_OFFSET)
+            | (target_piece.to_u64() << Self::EATEN_PIECE_OFFSET);
+        return Self {
+            bit_board: BitBoard::from(bb_value)
+        };
+    }
+
+    pub fn invalid() -> Self {
+        let bb_value = MoveType::Invalid.to_u64()
+            | (0 << Self::FROM_OFFSET)
+            | (0 << Self::TO_OFFSET)
+            | (0 << Self::PIECE_OFFSET)
+            | (0 << Self::COLOR_OFFSET)
+            | (0 << Self::EATEN_PIECE_OFFSET);
+        return Self {
+            bit_board: BitBoard::from(bb_value)
+        };
+    }
+
     pub fn get_type(self) -> MoveType {
         let value = self.bit_board.raw() & Self::MASK_3_BITS;
         return MoveType::try_from(value as usize).unwrap_or(MoveType::Invalid);
